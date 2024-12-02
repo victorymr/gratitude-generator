@@ -1,6 +1,5 @@
 # API Keys and sensitive data
 keys/
-*.txt
 config.local.js
 config.js
 .env
