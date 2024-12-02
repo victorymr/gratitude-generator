@@ -9,19 +9,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI(
-    title="Gratitude Generator API",
-    description="API for generating and managing gratitude messages across different life categories",
-    version="1.0.0"
-)
+app = FastAPI()
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=["*"],  # Allows all origins
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
 )
 
 # Airtable configuration
