@@ -1,7 +1,6 @@
 # API Keys and sensitive data
 keys/
 config.local.js
-config.js
 .env
 api/.env
 

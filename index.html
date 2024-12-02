@@ -111,21 +111,16 @@
     <script type="module">
         import { config } from './config.js';
 
-        async function makeAirtableRequest(url, options = {}) {
-            if (!config.AIRTABLE_TOKEN) {
-                throw new Error('API token not loaded');
-            }
-
+        async function makeApiRequest(endpoint, options = {}) {
             const defaultOptions = {
                 method: 'GET',
                 headers: {
-                    'Authorization': `Bearer ${config.AIRTABLE_TOKEN}`,
                     'Content-Type': 'application/json'
                 }
             };
 
             const finalOptions = { ...defaultOptions, ...options };
-            const response = await fetch(url, finalOptions);
+            const response = await fetch(`${config.API_URL}${endpoint}`, finalOptions);
 
             if (!response.ok) {
                 const errorText = await response.text();
@@ -140,17 +135,12 @@
             const select = document.getElementById('categorySelect');
             const newCategorySelect = document.getElementById('newCategory');
             try {
-                const categoriesUrl = `${config.AIRTABLE_API_URL}/${config.AIRTABLE_BASE_ID}/Categories?view=Grid%20view`;
-                console.log('Fetching categories from:', categoriesUrl);
-                
-                const categoriesData = await makeAirtableRequest(categoriesUrl);
+                console.log('Fetching categories...');
+                const categoriesData = await makeApiRequest('/categories');
                 console.log('Categories data:', categoriesData);
 
-                const categories = categoriesData.records.map(record => record.fields['Category Name']).filter(Boolean);
-                console.log('Available categories:', categories);
-
-                if (categories.length > 0) {
-                    const options = categories.sort().map(categoryName => 
+                if (categoriesData.length > 0) {
+                    const options = categoriesData.sort().map(categoryName => 
                         `<option value="${categoryName}">${categoryName}</option>`
                     ).join('');
 
@@ -171,30 +161,17 @@
                 throw new Error('Please select a category');
             }
 
-            const formula = encodeURIComponent(`{Category}="${category}"`);
-            const url = `${config.AIRTABLE_API_URL}/${config.AIRTABLE_BASE_ID}/Gratitude%20Entries?filterByFormula=${formula}&view=Grid%20view`;
+            const url = `/gratitude?categories=${encodeURIComponent(category)}&count=${count}`;
             console.log('Fetching gratitude from:', url);
             
-            const data = await makeAirtableRequest(url);
-            console.log('Received data:', data);
+            const messages = await makeApiRequest(url);
+            console.log('Received messages:', messages);
             
-            if (!data.records || data.records.length === 0) {
+            if (!messages || messages.length === 0) {
                 throw new Error('No gratitude messages found for this category.');
             }
 
-            // Get random messages
-            const messages = [];
-            const records = [...data.records];
-            for (let i = 0; i < Math.min(count, records.length); i++) {
-                const randomIndex = Math.floor(Math.random() * records.length);
-                const message = records[randomIndex].fields['Gratitude Statement'];
-                if (message) {
-                    messages.push(message);
-                }
-                records.splice(randomIndex, 1);
-            }
-
-            return messages;
+            return messages.map(msg => msg.statement);
         }
 
         async function displayGratitudeMessages(messages) {
@@ -202,15 +179,15 @@
             container.innerHTML = '';
 
             messages.forEach(message => {
-                const card = document.createElement('div');
-                card.className = 'gratitude-card p-4 fade-in';
-                card.innerHTML = `
+                const div = document.createElement('div');
+                div.className = 'gratitude-card p-4 fade-in';
+                div.innerHTML = `
                     <p class="text-gray-800 text-lg mb-2">${message}</p>
                     <button onclick="copyToClipboard(this.parentElement)" class="text-sm text-indigo-600 hover:text-indigo-800">
                         <i class="fas fa-copy mr-1"></i>Copy
                     </button>
                 `;
-                container.appendChild(card);
+                container.appendChild(div);
             });
         }
 
@@ -220,69 +197,68 @@
             const statusDiv = document.getElementById('submitStatus');
 
             if (!category || !gratitude) {
-                statusDiv.className = 'text-red-600';
-                statusDiv.textContent = 'Please fill in both category and gratitude message.';
+                statusDiv.innerHTML = '<p class="text-red-500">Please fill in all fields</p>';
                 return;
             }
 
             try {
-                statusDiv.className = 'text-gray-600';
-                statusDiv.textContent = 'Submitting...';
-
-                const url = `${config.AIRTABLE_API_URL}/${config.AIRTABLE_BASE_ID}/Gratitude%20Entries`;
-                const response = await makeAirtableRequest(url, {
+                statusDiv.innerHTML = '<p class="text-gray-500">Submitting...</p>';
+                
+                const response = await makeApiRequest('/gratitude', {
                     method: 'POST',
                     body: JSON.stringify({
-                        records: [{
-                            fields: {
-                                Category: category,
-                                'Gratitude Statement': gratitude
-                            }
-                        }]
+                        category: category,
+                        statement: gratitude
                     })
                 });
 
-                statusDiv.className = 'text-green-600';
-                statusDiv.textContent = 'Gratitude message submitted successfully!';
                 document.getElementById('newGratitude').value = '';
+                statusDiv.innerHTML = '<p class="text-green-500">Gratitude added successfully!</p>';
             } catch (error) {
-                statusDiv.className = 'text-red-600';
-                statusDiv.textContent = `Error: ${error.message}`;
+                console.error('Error submitting gratitude:', error);
+                statusDiv.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
             }
         }
 
-        // Export functions to global scope
-        window.getGratitude = async function() {
-            const selectedCategory = document.getElementById('categorySelect').value;
-            const loading = document.getElementById('loading');
+        // Initialize the page
+        window.onload = loadCategories;
 
-            loading.style.display = 'block';
+        // Make functions available globally
+        window.getGratitude = async function() {
+            const category = document.getElementById('categorySelect').value;
+            const loading = document.getElementById('loading');
+            
             try {
-                const messages = await getGratitudeMessages(selectedCategory, 1);
+                loading.style.display = 'block';
+                const messages = await getGratitudeMessages(category);
                 await displayGratitudeMessages(messages);
             } catch (error) {
                 console.error('Error:', error);
-                displayGratitudeMessages([`Error: ${error.message}`]);
+                document.getElementById('gratitudeContainer').innerHTML = 
+                    `<div class="text-red-500">${error.message}</div>`;
             } finally {
                 loading.style.display = 'none';
             }
         };
 
         window.getMultipleGratitude = async function() {
-            const selectedCategory = document.getElementById('categorySelect').value;
+            const category = document.getElementById('categorySelect').value;
             const loading = document.getElementById('loading');
-
-            loading.style.display = 'block';
+            
             try {
-                const messages = await getGratitudeMessages(selectedCategory, 3);
+                loading.style.display = 'block';
+                const messages = await getGratitudeMessages(category, 3);
                 await displayGratitudeMessages(messages);
             } catch (error) {
                 console.error('Error:', error);
-                displayGratitudeMessages([`Error: ${error.message}`]);
+                document.getElementById('gratitudeContainer').innerHTML = 
+                    `<div class="text-red-500">${error.message}</div>`;
             } finally {
                 loading.style.display = 'none';
             }
         };
+
+        window.submitNewGratitude = submitNewGratitude;
 
         window.copyToClipboard = function(element) {
             const text = element.querySelector('p').textContent;
@@ -295,11 +271,6 @@
                 }, 2000);
             });
         };
-
-        window.submitNewGratitude = submitNewGratitude;
-
-        // Load categories when page loads
-        document.addEventListener('DOMContentLoaded', loadCategories);
     </script>
 </body>
 </html>
