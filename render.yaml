@@ -11,3 +11,4 @@ services:
         sync: false
       - key: AIRTABLE_BASE_ID
         sync: false
+    autoDeploy: true
