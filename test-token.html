@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Airtable Connection</title>
+</head>
+<body>
+    <div id="result">Testing Airtable connection...</div>
+    <script type="module">
+        import { config } from './config.js';
+
+        async function testAirtableConnection() {
+            const resultDiv = document.getElementById('result');
+            try {
+                const url = `${config.AIRTABLE_API_URL}/${config.AIRTABLE_BASE_ID}/Gratitude%20Entries?maxRecords=1&view=Grid%20view`;
+                console.log('Testing URL:', url);
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${config.AIRTABLE_TOKEN}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+                }
+
+                const data = await response.json();
+                console.log('Response data:', data);
+
+                if (data.records && data.records.length > 0) {
+                    resultDiv.textContent = 'Connection successful! Found records in Airtable.';
+                } else {
+                    resultDiv.textContent = 'Connection successful, but no records found.';
+                }
+            } catch (error) {
+                console.error('Error details:', error);
+                resultDiv.textContent = `Error: ${error.message}`;
+            }
+        }
+        testAirtableConnection();
+    </script>
+</body>
+</html>

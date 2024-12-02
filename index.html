@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gratitude Generator</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .loading-spinner {
+            display: none;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        .gratitude-card {
+            background: white;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s;
+        }
+        .gratitude-card:hover {
+            transform: translateY(-2px);
+        }
+        .btn-primary {
+            background-color: #4F46E5;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            transition: all 0.2s;
+        }
+        .btn-primary:hover {
+            background-color: #4338CA;
+            transform: translateY(-1px);
+        }
+        .btn-primary:disabled {
+            background-color: #6B7280;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-indigo-100 to-purple-100 py-8 px-4">
+    <div class="max-w-2xl mx-auto">
+        <header class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-indigo-900 mb-4">Gratitude Generator</h1>
+            <p class="text-gray-600">Generate random gratitude messages to brighten your day</p>
+        </header>
+
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <div class="mb-6">
+                <label for="categorySelect" class="block text-sm font-medium text-gray-700 mb-2">Choose a Category</label>
+                <select id="categorySelect" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                    <option value="">Loading categories...</option>
+                </select>
+            </div>
+
+            <div class="flex space-x-4 mb-6">
+                <button onclick="getGratitude()" class="btn-primary flex-1">
+                    <i class="fas fa-random mr-2"></i>Get Random Gratitude
+                </button>
+                <button onclick="getMultipleGratitude()" class="btn-primary flex-1">
+                    <i class="fas fa-list mr-2"></i>Get Multiple (3)
+                </button>
+            </div>
+
+            <div id="loading" class="loading-spinner text-center text-indigo-600 text-4xl mb-4">
+                <i class="fas fa-circle-notch"></i>
+            </div>
+
+            <div id="gratitudeContainer" class="space-y-4">
+                <div id="gratitudeResult" class="gratitude-card p-4 hidden">
+                    <p class="text-gray-800 text-lg mb-2"></p>
+                    <button onclick="copyToClipboard(this.parentElement)" class="text-sm text-indigo-600 hover:text-indigo-800">
+                        <i class="fas fa-copy mr-1"></i>Copy
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add New Gratitude Form -->
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <h2 class="text-2xl font-bold text-indigo-900 mb-4">Add New Gratitude</h2>
+            <div class="space-y-4">
+                <div>
+                    <label for="newCategory" class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                    <select id="newCategory" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="">Select a category...</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="newGratitude" class="block text-sm font-medium text-gray-700 mb-2">Gratitude Message</label>
+                    <textarea id="newGratitude" rows="3" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Enter your gratitude message..."></textarea>
+                </div>
+                <button onclick="submitNewGratitude()" class="btn-primary w-full">
+                    <i class="fas fa-plus mr-2"></i>Submit New Gratitude
+                </button>
+                <div id="submitStatus" class="text-center mt-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { config } from './config.js';
+
+        async function makeAirtableRequest(url, options = {}) {
+            if (!config.AIRTABLE_TOKEN) {
+                throw new Error('API token not loaded');
+            }
+
+            const defaultOptions = {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${config.AIRTABLE_TOKEN}`,
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            const finalOptions = { ...defaultOptions, ...options };
+            const response = await fetch(url, finalOptions);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Error response:', errorText);
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            return response.json();
+        }
+
+        async function loadCategories() {
+            const select = document.getElementById('categorySelect');
+            const newCategorySelect = document.getElementById('newCategory');
+            try {
+                const categoriesUrl = `${config.AIRTABLE_API_URL}/${config.AIRTABLE_BASE_ID}/Categories?view=Grid%20view`;
+                console.log('Fetching categories from:', categoriesUrl);
+                
+                const categoriesData = await makeAirtableRequest(categoriesUrl);
+                console.log('Categories data:', categoriesData);
+
+                const categories = categoriesData.records.map(record => record.fields['Category Name']).filter(Boolean);
+                console.log('Available categories:', categories);
+
+                if (categories.length > 0) {
+                    const options = categories.sort().map(categoryName => 
+                        `<option value="${categoryName}">${categoryName}</option>`
+                    ).join('');
+
+                    select.innerHTML = '<option value="">Select a category...</option>' + options;
+                    newCategorySelect.innerHTML = '<option value="">Select a category...</option>' + options;
+                } else {
+                    throw new Error('No categories found');
+                }
+            } catch (error) {
+                console.error('Error loading categories:', error);
+                select.innerHTML = `<option value="">Error: ${error.message}</option>`;
+                newCategorySelect.innerHTML = `<option value="">Error: ${error.message}</option>`;
+            }
+        }
+
+        async function getGratitudeMessages(category, count = 1) {
+            if (!category) {
+                throw new Error('Please select a category');
+            }
+
+            const formula = encodeURIComponent(`{Category}="${category}"`);
+            const url = `${config.AIRTABLE_API_URL}/${config.AIRTABLE_BASE_ID}/Gratitude%20Entries?filterByFormula=${formula}&view=Grid%20view`;
+            console.log('Fetching gratitude from:', url);
+            
+            const data = await makeAirtableRequest(url);
+            console.log('Received data:', data);
+            
+            if (!data.records || data.records.length === 0) {
+                throw new Error('No gratitude messages found for this category.');
+            }
+
+            // Get random messages
+            const messages = [];
+            const records = [...data.records];
+            for (let i = 0; i < Math.min(count, records.length); i++) {
+                const randomIndex = Math.floor(Math.random() * records.length);
+                const message = records[randomIndex].fields['Gratitude Statement'];
+                if (message) {
+                    messages.push(message);
+                }
+                records.splice(randomIndex, 1);
+            }
+
+            return messages;
+        }
+
+        async function displayGratitudeMessages(messages) {
+            const container = document.getElementById('gratitudeContainer');
+            container.innerHTML = '';
+
+            messages.forEach(message => {
+                const card = document.createElement('div');
+                card.className = 'gratitude-card p-4 fade-in';
+                card.innerHTML = `
+                    <p class="text-gray-800 text-lg mb-2">${message}</p>
+                    <button onclick="copyToClipboard(this.parentElement)" class="text-sm text-indigo-600 hover:text-indigo-800">
+                        <i class="fas fa-copy mr-1"></i>Copy
+                    </button>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        async function submitNewGratitude() {
+            const category = document.getElementById('newCategory').value;
+            const gratitude = document.getElementById('newGratitude').value.trim();
+            const statusDiv = document.getElementById('submitStatus');
+
+            if (!category || !gratitude) {
+                statusDiv.className = 'text-red-600';
+                statusDiv.textContent = 'Please fill in both category and gratitude message.';
+                return;
+            }
+
+            try {
+                statusDiv.className = 'text-gray-600';
+                statusDiv.textContent = 'Submitting...';
+
+                const url = `${config.AIRTABLE_API_URL}/${config.AIRTABLE_BASE_ID}/Gratitude%20Entries`;
+                const response = await makeAirtableRequest(url, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        records: [{
+                            fields: {
+                                Category: category,
+                                'Gratitude Statement': gratitude
+                            }
+                        }]
+                    })
+                });
+
+                statusDiv.className = 'text-green-600';
+                statusDiv.textContent = 'Gratitude message submitted successfully!';
+                document.getElementById('newGratitude').value = '';
+            } catch (error) {
+                statusDiv.className = 'text-red-600';
+                statusDiv.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        // Export functions to global scope
+        window.getGratitude = async function() {
+            const selectedCategory = document.getElementById('categorySelect').value;
+            const loading = document.getElementById('loading');
+
+            loading.style.display = 'block';
+            try {
+                const messages = await getGratitudeMessages(selectedCategory, 1);
+                await displayGratitudeMessages(messages);
+            } catch (error) {
+                console.error('Error:', error);
+                displayGratitudeMessages([`Error: ${error.message}`]);
+            } finally {
+                loading.style.display = 'none';
+            }
+        };
+
+        window.getMultipleGratitude = async function() {
+            const selectedCategory = document.getElementById('categorySelect').value;
+            const loading = document.getElementById('loading');
+
+            loading.style.display = 'block';
+            try {
+                const messages = await getGratitudeMessages(selectedCategory, 3);
+                await displayGratitudeMessages(messages);
+            } catch (error) {
+                console.error('Error:', error);
+                displayGratitudeMessages([`Error: ${error.message}`]);
+            } finally {
+                loading.style.display = 'none';
+            }
+        };
+
+        window.copyToClipboard = function(element) {
+            const text = element.querySelector('p').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                const button = element.querySelector('button');
+                const originalText = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check mr-1"></i>Copied!';
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                }, 2000);
+            });
+        };
+
+        window.submitNewGratitude = submitNewGratitude;
+
+        // Load categories when page loads
+        document.addEventListener('DOMContentLoaded', loadCategories);
+    </script>
+</body>
+</html>
